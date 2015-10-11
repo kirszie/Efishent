@@ -1,0 +1,66 @@
+#!usr/bin/perl -w
+use strict;
+use Data::Dumper;
+
+#perl perl_loop_mafft fileID outfolder outfolder2
+
+#Run perl on perl script (perl_loop_mafft_all) it uses MAFFT to align the quaried inputfiles placed in a list (inputfile) 
+
+my $inputfile = shift;
+my $outfolder = shift;
+my $outfolder2 = shift;
+open (IN, "<", $inputfile) or die  "$inputfile doesn't open$!\n";
+
+while(my $line=<IN>){
+chomp $line;
+my $tomafft = checkFile($line,$outfolder2);
+my $out = $tomafft.".out";
+#open(OUT, ">", $out) or die "Can't open THIS $!\n";
+my $mafft = `mafft --quiet --auto $outfolder2/$tomafft > $outfolder/$out`;
+}
+
+#In this sub each inputfile is checked for sequence names appearing twice, if they do then only the longest fragment is keept. 
+
+sub checkFile{
+my $file = $_[0];
+my $outfolder = $_[1];
+print "$file";
+my %hash = ();
+my $seqname;
+open (INTO, "<",$file) or die "Can't open $file $!\n";
+while(my $line=<INTO>){ 
+	chomp $line;
+	if($line=~/>/){
+	$seqname = $line;	
+$hash{$seqname}=$line;	
+}
+else{
+	if (exists $hash{$seqname}){
+my$length1 = (length ($line));
+my$length2 = length ($hash{$seqname}); 
+	if ($length1 > $length2){
+	$hash{$seqname}=$line;
+	}}
+
+}
+}
+
+#Once the script has run, the 2 files created are put in different output folders. The New renamed fasta files(.fas) in outputfolder2 and the aligned output files (fas.out.table) in outputfolder.
+
+print Dumper \ %hash;
+my @tomafft = keys %hash;
+my $size = (scalar (@tomafft));
+my $tomafftfile;
+	if ($size==8){
+	$tomafftfile = "new_".$file.".all";}
+else{
+$tomafftfile = "new_".$file;
+}
+open(OUT, ">$outfolder/$tomafftfile") or die "Can't open THIS $!\n";
+
+for(my $i =0; $i<@tomafft;$i++){
+print OUT "$tomafft[$i]\n";
+print OUT "$hash{$tomafft[$i]}\n";
+}
+return($tomafftfile);
+}
