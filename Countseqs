@@ -1,0 +1,197 @@
+
+#Call Programm: perl countseqs2.pl <filelist: contains list of file names> <infolder: folder containing alignmnets in .fasta format> <outfolder: new folder containing stats for each gene, saved in separate files>
+
+
+#count seqeunce lengths in aln files
+# exclude lines starting with ">" (fasta format)
+#!usr/bin/perl -w
+
+##using the strict library will help to keep track of variable names and scope
+use strict;
+
+##prints contents of hashes to screen.
+use Data::Dumper;
+
+## shift with no arguments defaults to @ARGV, defining structure of program call.
+my $file= shift;
+my $outfolder= shift;
+my $infolder = shift;
+
+## open the file, $file for reading, if unable, die and print
+## an error message.
+open (ALN2, '<', $file) or die "Can't open $file $!\n";
+
+
+##Iterating through the filelist
+
+while (my $line = <ALN2>) 
+##The chomp function will remove any newline character from the end of a string. 
+{chomp $line;filesaving ($line,$outfolder,$infolder);} 
+
+## function "filesaving" will use datafile names from filelist, data from infolder and analyse & print to outfolder containing the stats information.
+sub filesaving {
+
+##predefined scalar variable flying carpet "$_" contains the most recent value "automatically" in loops. here: uses our three input parameters filelist, infolder & outfolder.
+my $file= $_[0];
+my $outfolder= $_[1];
+my $infolder = $_[2];
+
+## open the file, $file for reading, if unable, die and print
+## an error message.
+open (ALN, "<$infolder/$file") or die "Can't open $file $!\n";
+
+##define hash "hash" which will later contain the seq name and seq itself.
+my %hash = ();
+
+##definig different variables
+my $seqname;
+my $count=0;
+my $seq;
+my $result;
+
+##defining hash "All_Info"  which will later contain the collected information for the stats, i.e. seqname & stats
+my %All_Info=();
+
+my $query;
+
+while (my $line = <ALN>) {
+  chomp $line;
+
+##if loop to see if ">" occurs in the line (indicates sequence name in fasta files), file is parsed and saved for later analyses.
+if ($line =~/>/){
+   if($count>0){
+	$hash {$seqname}=$seq;
+	$result=seqanalysis($seq);
+	$All_Info{$seqname}= $result;
+	}
+   $seqname=$line;
+
+####if loop to see if "query" occurs in the seqname, referring to bait sequence; count allows filling hash at 2nd iteration.
+if ($seqname=~/query/) {
+$query=$seqname;
+}
+   $seq = "";
+   $count++;
+	}	
+else
+{
+$seq=$seq.$line;
+}
+}
+
+$hash {$seqname}=$seq;
+my $queryseq = $hash{$query};
+
+##defining variable result2 containing the results of seqanalysis
+my $result2=seqanalysis($seq);
+
+##assigning the results2 variable to the seqname variable in the All Info hash
+$All_Info{$seqname}= $result2;
+
+##defining that outfiles get ".table" attached to the names
+my $outfile=$file.".table";
+
+##outputting
+open (OUT, ">$outfolder/$outfile");
+my @hashkeyallinfo=keys %All_Info;
+##defining headers for output table columns.
+my $header = "species \t totalseqlength \t gaplength \t trueseqlength \t GCcontent \t Mismatch_Content \t Score";
+print OUT "$header \n";
+for (my $i=0; $i<scalar(@hashkeyallinfo);$i++)
+	{my $mismatches=get_mismatches ($hash {$hashkeyallinfo[$i]}, $queryseq);
+	print ($query,"\n");
+print ($hashkeyallinfo[$i],"\n");
+	print OUT "$hashkeyallinfo[$i]\t";
+	my $value=($All_Info{$hashkeyallinfo[$i]});
+	print OUT "$value\t$mismatches\n";
+}
+
+##prints output to screen to check if script works; could be commented (add "#").
+print "Sequence length: " , $seqname," ", length($seq) , "\n";
+print Dumper %hash;
+print Dumper %All_Info;
+
+}
+#count mismatches and calculate score in relation to query (bait sequence) using the function get_mismatches: 
+sub get_mismatches {
+my $seq=$_[0];
+my $query=$_[1];
+my $querylength= length ($query);
+## $count counts mismatches.
+my $count=0;
+##$score calculation: sites in alignment equal, score =0, else score=1
+my $score=0;
+
+##iterating through sequences and computing mismatches and scores
+for (my $i=0;$i<$querylength;$i++) 
+	{my $querypos=substr($query, $i, 1);
+	my $seqpos=substr($seq, $i, 1);
+	if (($querypos ne $seqpos) and ($querypos ne "-") and ($seqpos ne "-"))
+	{
+	 $count++;
+	}
+if (($querypos ne $seqpos) or ($querypos eq "-") and ($seqpos eq "-"))
+{
+         $score++;
+        }
+
+	
+}
+##defining variable total seq length, which is the length of the sequence including gaps
+my $totalseqlength=(length $seq);
+##defining variable gaplength, which counts all gaps in a sequence
+my $gaplength=$seq=~ tr/-//;
+##defining variable trueseqlength, which is the sequence length without gaps
+my $trueseqlength=$totalseqlength-$gaplength;
+
+##print to screen to check if script works, could be commneted.
+print "$count\n";
+print "$trueseqlength\n";
+##define variable mismatch content in if-loop. If trueseqlength is>0 (to avoid illegal division by zero error), devide count by trueseqlength.
+my $mismatchcontent;
+if ($trueseqlength>0) {
+$mismatchcontent = $count/$trueseqlength;
+}else{
+$mismatchcontent=0;
+}
+##collect information and return information on score and mismatches.
+my $res = "$mismatchcontent\t$score";
+return $res;
+}
+
+##define function for sequence analysis: total length, number of gaps, number of letters
+sub seqanalysis{
+##defining variables needed for calculations.
+my $seq=$_[0];
+my $totalseqlength=(length $seq);
+my $gaplength=$seq=~ tr/-//;
+my $trueseqlength=$totalseqlength-$gaplength;
+my $gcontent=$seq=~ tr/g//;
+my $Gcontent=$seq=~ tr/G//;
+my $ccontent=$seq=~ tr/c//;
+my $Ccontent=$seq=~ tr/C//;
+my $GCcontent;
+
+##compute GC content in if-loop, if trueseqlength is>0 to avoid illegal division by zero error.
+if ($trueseqlength>0) {
+$GCcontent=($Gcontent+$gcontent+$ccontent+$Ccontent)/$trueseqlength;
+} else {
+$GCcontent=0;
+}
+
+##define table column content in array seqvalues
+my @seqvalues=($totalseqlength, $gaplength, $trueseqlength, $GCcontent);
+##all variables stored as string for nicer output.
+my $res = join("\t",@seqvalues); 
+
+##print to screen to check if script works, could be commneted.
+print ("@seqvalues", "\n");
+print "$res,\n";
+print ("$GCcontent", "\n");
+
+##collect information and return information on seqlength...
+return $res;
+}
+
+__END__
+
